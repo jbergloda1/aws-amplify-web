@@ -1,16 +1,95 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuthenticator } from "@aws-amplify/ui-react";
 import { Amplify } from "aws-amplify";
 import outputs from "@/amplify_outputs.json";
 import "@aws-amplify/ui-react/styles.css";
+import { SocialService } from "./services/socialService";
+import { useVisitorTracking } from "./hooks/useVisitorTracking";
 
 Amplify.configure(outputs);
 
 export default function SocialDashboard() {
   const { user, signOut } = useAuthenticator();
   const [activeTab, setActiveTab] = useState('overview');
+  const [realTimeVisitors, setRealTimeVisitors] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  
+  // Initialize visitor tracking
+  const { sessionId, trackPageView } = useVisitorTracking(user?.userId);
+
+  // Load real-time data
+  useEffect(() => {
+    if (user?.userId) {
+      loadNotifications();
+      loadVisitorAnalytics();
+      setupRealTimeSubscriptions();
+    }
+  }, [user?.userId]);
+
+  const loadNotifications = async () => {
+    try {
+      if (user?.userId) {
+        const result = await SocialService.getNotifications(user.userId, 10);
+        setNotifications(result.data || []);
+      } else {
+        // Set empty notifications if no user
+        setNotifications([]);
+      }
+    } catch (error) {
+      console.error('Error loading notifications:', error);
+      setNotifications([]);
+    }
+  };
+
+  const loadVisitorAnalytics = async () => {
+    try {
+      const result = await SocialService.getVisitorAnalytics(undefined, 5);
+      setRealTimeVisitors(result.data || []);
+    } catch (error) {
+      console.error('Error loading visitor analytics:', error);
+      setRealTimeVisitors([]);
+    }
+  };
+
+  const setupRealTimeSubscriptions = () => {
+    if (!user?.userId) return;
+
+    try {
+      // Subscribe to notifications
+      const notificationSubscription = SocialService.subscribeToNotifications(
+        user.userId,
+        (notification) => {
+          setNotifications(prev => [notification, ...prev.slice(0, 9)]);
+        }
+      );
+
+      // Subscribe to visitor analytics
+      const visitorSubscription = SocialService.subscribeToVisitorAnalytics(
+        (visitor) => {
+          setRealTimeVisitors(prev => [visitor, ...prev.slice(0, 4)]);
+        }
+      );
+
+      return () => {
+        if (notificationSubscription?.unsubscribe) {
+          notificationSubscription.unsubscribe();
+        }
+        if (visitorSubscription?.unsubscribe) {
+          visitorSubscription.unsubscribe();
+        }
+      };
+    } catch (error) {
+      console.error('Error setting up real-time subscriptions:', error);
+      return () => {};
+    }
+  };
+
+  // Track page view when tab changes
+  useEffect(() => {
+    trackPageView(`/dashboard/${activeTab}`);
+  }, [activeTab, trackPageView]);
 
   const stats = [
     { title: 'Total Followers', value: '2.4M', change: '+12.5%', icon: '👥' },
@@ -31,6 +110,45 @@ export default function SocialDashboard() {
     { platform: 'Instagram', handle: '@company_official', followers: '89K', status: 'active' },
     { platform: 'LinkedIn', handle: 'Company Inc.', followers: '45K', status: 'active' },
     { platform: 'Facebook', handle: 'Company Page', followers: '67K', status: 'paused' }
+  ];
+
+  const visitorStats = [
+    { title: 'Total Visitors', value: '12.4K', change: '+18.2%', icon: '👥' },
+    { title: 'Unique Visitors', value: '8.9K', change: '+12.5%', icon: '🆔' },
+    { title: 'Page Views', value: '45.2K', change: '+25.1%', icon: '📄' },
+    { title: 'Avg. Session', value: '3m 42s', change: '+8.3%', icon: '⏱️' }
+  ];
+
+  const currentVisitors = [
+    { id: 1, location: 'New York, US', device: 'Desktop', browser: 'Chrome', page: '/dashboard', time: '2 min ago', source: 'Direct' },
+    { id: 2, location: 'London, UK', device: 'Mobile', browser: 'Safari', page: '/products', time: '1 min ago', source: 'Google' },
+    { id: 3, location: 'Tokyo, JP', device: 'Tablet', browser: 'Firefox', page: '/about', time: '3 min ago', source: 'Social' },
+    { id: 4, location: 'Sydney, AU', device: 'Desktop', browser: 'Edge', page: '/contact', time: '1 min ago', source: 'Direct' },
+    { id: 5, location: 'Berlin, DE', device: 'Mobile', browser: 'Chrome', page: '/blog', time: '4 min ago', source: 'Email' }
+  ];
+
+  const topPages = [
+    { page: '/dashboard', views: '2,847', visitors: '1,923', bounceRate: '23%' },
+    { page: '/products', views: '2,156', visitors: '1,456', bounceRate: '31%' },
+    { page: '/about', views: '1,892', visitors: '1,234', bounceRate: '28%' },
+    { page: '/contact', views: '1,456', visitors: '987', bounceRate: '35%' },
+    { page: '/blog', views: '1,234', visitors: '856', bounceRate: '42%' }
+  ];
+
+  const trafficSources = [
+    { source: 'Direct', visitors: '4,234', percentage: '35%', color: '#3b82f6' },
+    { source: 'Google', visitors: '3,456', percentage: '29%', color: '#10b981' },
+    { source: 'Social', visitors: '2,123', percentage: '18%', color: '#f59e0b' },
+    { source: 'Email', visitors: '1,567', percentage: '13%', color: '#ef4444' },
+    { source: 'Referral', visitors: '623', percentage: '5%', color: '#8b5cf6' }
+  ];
+
+  const visitorLocations = [
+    { country: 'United States', visitors: '3,456', percentage: '29%', flag: '🇺🇸' },
+    { country: 'United Kingdom', visitors: '2,123', percentage: '18%', flag: '🇬🇧' },
+    { country: 'Germany', visitors: '1,567', percentage: '13%', flag: '🇩🇪' },
+    { country: 'Canada', visitors: '1,234', percentage: '10%', flag: '🇨🇦' },
+    { country: 'Australia', visitors: '987', percentage: '8%', flag: '🇦🇺' }
   ];
 
   return (
@@ -85,6 +203,13 @@ export default function SocialDashboard() {
             <span className="nav-icon">💬</span>
             <span>Inbox</span>
           </button>
+          <button 
+            className={`nav-item ${activeTab === 'visitors' ? 'active' : ''}`}
+            onClick={() => setActiveTab('visitors')}
+          >
+            <span className="nav-icon">👁️</span>
+            <span>Visitors</span>
+          </button>
         </nav>
 
         <div className="sidebar-footer">
@@ -116,6 +241,7 @@ export default function SocialDashboard() {
               {activeTab === 'accounts' && 'Account Management'}
               {activeTab === 'scheduling' && 'Post Scheduling'}
               {activeTab === 'inbox' && 'Message Inbox'}
+              {activeTab === 'visitors' && 'Visitor Analytics'}
             </h1>
             <p className="page-subtitle">
               {activeTab === 'overview' && 'Monitor your social media performance across all platforms'}
@@ -124,6 +250,7 @@ export default function SocialDashboard() {
               {activeTab === 'accounts' && 'Manage connected social media accounts'}
               {activeTab === 'scheduling' && 'Schedule posts across multiple platforms'}
               {activeTab === 'inbox' && 'Manage messages and comments'}
+              {activeTab === 'visitors' && 'Track and analyze website visitor behavior and demographics'}
             </p>
           </div>
           
@@ -131,7 +258,11 @@ export default function SocialDashboard() {
             <div className="notifications">
               <button className="notification-btn">
                 <span>🔔</span>
-                <span className="notification-badge">3</span>
+                {notifications.filter(n => !n.isRead).length > 0 && (
+                  <span className="notification-badge">
+                    {notifications.filter(n => !n.isRead).length}
+                  </span>
+                )}
               </button>
             </div>
             <button className="create-post-btn">
@@ -418,6 +549,225 @@ export default function SocialDashboard() {
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'visitors' && (
+            <div className="visitors-section">
+              {/* Visitor Stats */}
+              <div className="stats-grid">
+                {visitorStats.map((stat, index) => (
+                  <div key={index} className="stat-card">
+                    <div className="stat-icon">{stat.icon}</div>
+                    <div className="stat-content">
+                      <h3 className="stat-title">{stat.title}</h3>
+                      <div className="stat-value">{stat.value}</div>
+                      <div className="stat-change positive">{stat.change}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Real-time Visitors */}
+              <div className="visitors-grid">
+                <div className="current-visitors">
+                  <div className="section-header">
+                    <h3>Live Visitors</h3>
+                    <div className="live-indicator">
+                      <span className="live-dot"></span>
+                      <span>{realTimeVisitors.length || 5} online now</span>
+                    </div>
+                  </div>
+                  <div className="visitors-list">
+                    {realTimeVisitors.length > 0 ? realTimeVisitors.map((visitor) => (
+                      <div key={visitor.id} className="visitor-item">
+                        <div className="visitor-avatar">
+                          <span className="visitor-initial">
+                            {visitor.location ? visitor.location.split(',')[0].charAt(0) : 'U'}
+                          </span>
+                        </div>
+                        <div className="visitor-info">
+                          <div className="visitor-location">
+                            <span className="location-icon">📍</span>
+                            <span>{visitor.location || 'Unknown Location'}</span>
+                          </div>
+                          <div className="visitor-details">
+                            <span className="device-info">
+                              <span className="device-icon">
+                                {visitor.device === 'Desktop' && '🖥️'}
+                                {visitor.device === 'Mobile' && '📱'}
+                                {visitor.device === 'Tablet' && '📱'}
+                              </span>
+                              <span>{visitor.device || 'Unknown'} • {visitor.browser || 'Unknown'}</span>
+                            </span>
+                            <span className="visitor-page">{visitor.page}</span>
+                          </div>
+                          <div className="visitor-meta">
+                            <span className="visitor-time">
+                              {visitor.timestamp ? new Date(visitor.timestamp).toLocaleTimeString() : 'Now'}
+                            </span>
+                            <span className="visitor-source">{visitor.referrer || 'Direct'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )) : currentVisitors.map((visitor) => (
+                      <div key={visitor.id} className="visitor-item">
+                        <div className="visitor-avatar">
+                          <span className="visitor-initial">
+                            {visitor.location.split(',')[0].charAt(0)}
+                          </span>
+                        </div>
+                        <div className="visitor-info">
+                          <div className="visitor-location">
+                            <span className="location-icon">📍</span>
+                            <span>{visitor.location}</span>
+                          </div>
+                          <div className="visitor-details">
+                            <span className="device-info">
+                              <span className="device-icon">
+                                {visitor.device === 'Desktop' && '🖥️'}
+                                {visitor.device === 'Mobile' && '📱'}
+                                {visitor.device === 'Tablet' && '📱'}
+                              </span>
+                              <span>{visitor.device} • {visitor.browser}</span>
+                            </span>
+                            <span className="visitor-page">{visitor.page}</span>
+                          </div>
+                          <div className="visitor-meta">
+                            <span className="visitor-time">{visitor.time}</span>
+                            <span className="visitor-source">{visitor.source}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="traffic-sources">
+                  <div className="section-header">
+                    <h3>Traffic Sources</h3>
+                    <button className="view-details-btn">View Details</button>
+                  </div>
+                  <div className="sources-list">
+                    {trafficSources.map((source, index) => (
+                      <div key={index} className="source-item">
+                        <div className="source-info">
+                          <div 
+                            className="source-color" 
+                            style={{ backgroundColor: source.color }}
+                          ></div>
+                          <span className="source-name">{source.source}</span>
+                        </div>
+                        <div className="source-stats">
+                          <span className="source-visitors">{source.visitors}</span>
+                          <span className="source-percentage">{source.percentage}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Top Pages and Locations */}
+              <div className="visitors-analytics-grid">
+                <div className="top-pages-card">
+                  <div className="section-header">
+                    <h3>Top Pages</h3>
+                    <button className="view-all-btn">View All</button>
+                  </div>
+                  <div className="pages-list">
+                    {topPages.map((page, index) => (
+                      <div key={index} className="page-item">
+                        <div className="page-rank">#{index + 1}</div>
+                        <div className="page-info">
+                          <h4>{page.page}</h4>
+                          <div className="page-stats">
+                            <span>{page.views} views</span>
+                            <span>•</span>
+                            <span>{page.visitors} visitors</span>
+                            <span>•</span>
+                            <span className="bounce-rate">{page.bounceRate} bounce</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="visitor-locations-card">
+                  <div className="section-header">
+                    <h3>Visitor Locations</h3>
+                    <button className="view-map-btn">View Map</button>
+                  </div>
+                  <div className="locations-list">
+                    {visitorLocations.map((location, index) => (
+                      <div key={index} className="location-item">
+                        <div className="location-flag">{location.flag}</div>
+                        <div className="location-info">
+                          <span className="location-country">{location.country}</span>
+                          <div className="location-stats">
+                            <span>{location.visitors} visitors</span>
+                            <span className="location-percentage">{location.percentage}</span>
+                          </div>
+                        </div>
+                        <div className="location-bar">
+                          <div 
+                            className="location-fill" 
+                            style={{ width: location.percentage }}
+                          ></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Visitor Behavior Chart */}
+              <div className="behavior-chart">
+                <div className="section-header">
+                  <h3>Visitor Behavior</h3>
+                  <div className="chart-controls">
+                    <button className="chart-btn active">24H</button>
+                    <button className="chart-btn">7D</button>
+                    <button className="chart-btn">30D</button>
+                  </div>
+                </div>
+                <div className="behavior-metrics">
+                  <div className="metric-item">
+                    <div className="metric-label">Page Views</div>
+                    <div className="metric-chart">
+                      {[45, 52, 38, 67, 55, 72, 48, 61, 58, 49, 63, 55].map((height, i) => (
+                        <div key={i} className="metric-bar" style={{ height: `${height}%` }}></div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="metric-item">
+                    <div className="metric-label">Unique Visitors</div>
+                    <div className="metric-chart">
+                      {[32, 38, 28, 45, 42, 48, 35, 41, 38, 33, 44, 39].map((height, i) => (
+                        <div key={i} className="metric-bar" style={{ height: `${height}%` }}></div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="metric-item">
+                    <div className="metric-label">Bounce Rate</div>
+                    <div className="metric-chart">
+                      {[25, 28, 32, 22, 26, 24, 30, 27, 29, 31, 26, 28].map((height, i) => (
+                        <div key={i} className="metric-bar bounce" style={{ height: `${height}%` }}></div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="chart-labels">
+                  <span>12AM</span>
+                  <span>4AM</span>
+                  <span>8AM</span>
+                  <span>12PM</span>
+                  <span>4PM</span>
+                  <span>8PM</span>
+                  <span>12AM</span>
+                </div>
               </div>
             </div>
           )}
